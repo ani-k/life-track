@@ -4,15 +4,20 @@ All values are read from environment variables / .env file.
 No hardcoded secrets — OWASP A02.
 """
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Resolve .env relative to this file (backend/app/core/config.py → backend/.env)
+# This works regardless of the CWD the server is started from.
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -67,6 +72,26 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     # Model served by Ollama — examples: "gemma3:2b", "llama3.1", "mistral"
     ollama_model: str = "gemma3:2b"
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: object) -> list[str]:
+        """
+        Accept either:
+          - a list already:          ["http://localhost:5173"]
+          - a JSON array string:     '["http://localhost:5173"]'
+          - a comma-separated string: "http://localhost:5173,http://localhost:3000"
+          - a plain URL string:       "http://localhost:5173"
+        """
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("["):
+                import json
+                return json.loads(stripped)
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return v
 
     @field_validator("secret_key")
     @classmethod

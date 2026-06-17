@@ -501,7 +501,7 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
     </Transition>
 
     <!-- ── Toolbar ──────────────────────────────────────────────── -->
-    <header class="absolute top-0 left-0 right-0 z-30 flex items-center justify-between
+    <header class="absolute top-0 left-0 right-0 z-50 flex items-center justify-between
                    px-4 py-2.5 bg-white/80 backdrop-blur-sm border-b border-olive-100">
       <!-- Brand + Space Selector -->
       <div class="flex items-center gap-3">
