@@ -39,7 +39,7 @@ const typeColors: Record<string, string> = {
       class="relative bg-white/90 rounded-xl border border-dashed border-olive-400 border-l-4
              shadow-node select-none overflow-hidden"
       :class="typeColors[data.proposal.node_type] ?? 'border-l-olive-300'"
-      style="min-width: 220px; max-width: 280px;"
+       style="width: 260px;"
     >
       <!-- AI badge header -->
       <div class="flex items-center justify-between px-3 pt-2 pb-1 gap-2">

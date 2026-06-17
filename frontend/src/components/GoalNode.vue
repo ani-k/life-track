@@ -93,7 +93,7 @@ function onDelete(e: MouseEvent) {
       selected ? 'shadow-node-selected ring-2 ring-olive-500' : '',
       isHighlighted ? 'ring-2 ring-olive-400 ring-offset-1 animate-pulse shadow-lg' : '',
     ]"
-    style="min-width: 220px; max-width: 280px;"
+    style="width: 260px;"
   >
     <!-- ── Header row ─────────────────────────────────────────── -->
     <div class="flex items-center justify-between px-3 pt-2.5 pb-1 gap-2">

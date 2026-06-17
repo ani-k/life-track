@@ -68,9 +68,17 @@ const {
 const baseApplier = useMutationApplier(vfNodes as any, vfEdges as any, props.spaceId)
 
 function applyMutations(mutations: import('@/types/graph').GraphMutationAction[]) {
-  // Record changes in Undo Stack before mutation execution!
   undoHistory.recordTurn(mutations)
-  return baseApplier.applyMutations(mutations)
+  const result = baseApplier.applyMutations(mutations)
+
+  const hasStructuralChanges = mutations.some(
+    m => m.action === 'add_node' || m.action === 'add_edge'
+  )
+  if (hasStructuralChanges) {
+    setTimeout(() => applyAutoLayout(), 120)
+  }
+
+  return result
 }
 
 const showChat = ref(true)
@@ -91,27 +99,32 @@ export interface DecomposeActions {
 provide<GraphActions>('graphActions', { patchNodeStatus, triggerDecompose, deleteNode: handleDeleteNode })
 provide<DecomposeActions>('decomposeActions', { acceptProposal, discardProposal })
 
-// ── Auto-Layout Function ───────────────────────────────────────────────
 function applyAutoLayout() {
   const nodesForLayout = (vfNodes.value as any[])
     .filter((n: any) => n.type !== 'ghostNode')
-    .map((n: any) => ({ id: n.id, width: 220, height: 80 }))
-  
+    .map((n: any) => ({
+      id: n.id,
+      width: n.dimensions?.width || 260,
+      height: n.dimensions?.height || 120,
+    }))
+
   const edgesForLayout = (vfEdges.value as any[])
+    .filter((e: any) => e.source && e.target)
     .map((e: any) => ({ source: e.source, target: e.target }))
 
   if (nodesForLayout.length === 0) return
 
   const computedCoords = layoutTree(nodesForLayout, edgesForLayout, 'TB')
-  
-  // Apply positions back to vfNodes and persist to DB
+
   computedCoords.forEach(coord => {
-    const node = vfNodes.value.find(n => n.id === coord.id)
+    const node = vfNodes.value.find((n: any) => n.id === coord.id)
     if (node) {
       node.position = { x: coord.x, y: coord.y }
       patchNodePosition(coord.id, { x: coord.x, y: coord.y })
     }
   })
+
+  setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 50)
 }
 
 // Exposure to template or window for dev/usage

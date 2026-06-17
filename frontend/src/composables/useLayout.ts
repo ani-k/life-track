@@ -30,10 +30,11 @@ export function layoutTree(
   // - ranksep: vertical separation between ranks
   g.setGraph({
     rankdir: direction,
-    nodesep: 100,
-    ranksep: 180,
-    marginx: 50,
-    marginy: 50,
+    nodesep: 200,
+    ranksep: 200,
+    marginx: 100,
+    marginy: 100,
+    align: 'UL',
   })
 
   // Default to assigning a new object as a label for each edge
@@ -42,8 +43,8 @@ export function layoutTree(
   // 1. Add nodes to layout
   nodes.forEach(node => {
     g.setNode(node.id, {
-      width: node.width ?? 220,
-      height: node.height ?? 80,
+      width: node.width ?? 260,
+      height: node.height ?? 120,
     })
   })
 
@@ -63,8 +64,8 @@ export function layoutTree(
     const computed = g.node(node.id)
     return {
       id: node.id,
-      x: computed.x - (node.width ?? 220) / 2, // convert from center-based to top-left Vue Flow coordinate space
-      y: computed.y - (node.height ?? 80) / 2,
+      x: computed.x - (node.width ?? 260) / 2,
+      y: computed.y - (node.height ?? 120) / 2,
     }
   })
 }

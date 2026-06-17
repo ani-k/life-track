@@ -48,16 +48,17 @@ export function useDecompose(
   // ── Auto-Layout for whole tree ─────────────────────────────────────
   
   function applyTreeLayout() {
-    // 1. Prepare simple representations
-    const layoutNodes = vfNodes.value.map(n => ({
+    const layoutNodes = vfNodes.value.map((n: any) => ({
       id: n.id,
-      width: 220,
-      height: 80,
+      width: n.dimensions?.width || 260,
+      height: n.dimensions?.height || 120,
     }))
-    const layoutEdges = vfEdges.value.map(e => ({
-      source: e.source,
-      target: e.target,
-    }))
+    const layoutEdges = vfEdges.value
+      .filter((e: any) => e.source && e.target)
+      .map((e: any) => ({
+        source: e.source,
+        target: e.target,
+      }))
 
     // 2. Perform Dagre Layout
     const results = layoutTree(layoutNodes, layoutEdges, 'TB')
@@ -310,7 +311,7 @@ export function useDecompose(
           x: targetPosition.x,
           y: targetPosition.y,
         },
-        dimensions: { width: 220, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#84855c', icon: null },
         collapsed: false,
       },

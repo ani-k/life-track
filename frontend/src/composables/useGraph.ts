@@ -95,7 +95,7 @@ export function useGraph(spaceId: string) {
       ...payload,
       canvas_data: {
         position,
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#84855c', icon: null },
         collapsed: false,
       },
@@ -131,7 +131,7 @@ export function useGraph(spaceId: string) {
       updated_at: now,
       canvas_data: {
         position,
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#84855c', icon: null },
         collapsed: false,
       },

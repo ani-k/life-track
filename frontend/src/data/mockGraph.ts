@@ -34,7 +34,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: 280, y: 40 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#505137', icon: '🎯' },
         collapsed: false,
       },
@@ -55,7 +55,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: 60, y: 200 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#84855c', icon: '🏗️' },
         collapsed: false,
       },
@@ -76,7 +76,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: 500, y: 200 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#84855c', icon: '🌿' },
         collapsed: false,
       },
@@ -97,7 +97,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: -40, y: 380 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#b9ba88', icon: '📖' },
         collapsed: false,
       },
@@ -118,7 +118,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: 200, y: 380 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#b9ba88', icon: '⚙️' },
         collapsed: false,
       },
@@ -139,7 +139,7 @@ export const mockGraph: GraphResponse = {
       updated_at: NOW,
       canvas_data: {
         position: { x: 500, y: 380 },
-        dimensions: { width: 240, height: 80 },
+        dimensions: { width: 260, height: 120 },
         style: { color: '#b9ba88', icon: null },
         collapsed: false,
       },
