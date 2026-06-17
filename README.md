@@ -53,9 +53,15 @@ cd life-track
    ```
 
 3. **Запуск**:
-   Запустите FastAPI-сервер на свободном порту `8082` (порт 8000 часто занят системными службами на macOS):
+   Запустите FastAPI-сервер на свободном порту `8082` (порт 8000 часто занят системными службами на macOS).
+   **Важно:** команду нужно запускать **из папки `backend/`**, а не из корня репозитория:
    ```bash
-   uvicorn backend.app.main:app --host 127.0.0.1 --port 8082 --reload
+   cd backend
+   uvicorn app.main:app --host 127.0.0.1 --port 8082 --reload
+   ```
+   Альтернативно — из корня репозитория с явным указанием `PYTHONPATH`:
+   ```bash
+   PYTHONPATH=backend uvicorn app.main:app --host 127.0.0.1 --port 8082 --reload
    ```
 
 ---
@@ -123,6 +129,18 @@ LITELLM_MODEL=ollama/gemma3:2b
 ---
 
 ## 🩹 Решение частых проблем
+
+### Ошибка: `ModuleNotFoundError: No module named 'app'`
+Эта ошибка возникает, если uvicorn запущен из корня репозитория командой `uvicorn backend.app.main:app ...`.
+В таком случае Python ищет пакет `app` в корне, но он находится внутри `backend/`.
+
+**Решение:** запускайте сервер из папки `backend/`:
+```bash
+cd backend
+uvicorn app.main:app --host 127.0.0.1 --port 8082 --reload
+```
+
+---
 
 ### Ошибка: `ERROR: [Errno 48] Address already in use`
 Эта ошибка означает, что порт `8082` занят зависшим в фоне процессом.
