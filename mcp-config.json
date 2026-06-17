@@ -1,0 +1,98 @@
+{
+  "$schema": "https://spec.modelcontextprotocol.io/schema/2025/mcp-config.json",
+  "name": "LifeTrack",
+  "version": "0.1.0",
+  "description": "LifeTrack — visual life-planning canvas with AI-powered goal decomposition and graph management",
+  "transport": {
+    "type": "http",
+    "base_url": "http://localhost:8000/api/v1",
+    "headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "capabilities": {
+    "resources": {
+      "graph": {
+        "description": "Full goal graph for a space (nodes + edges)",
+        "uri_template": "/spaces/{space_id}/graph",
+        "method": "GET"
+      },
+      "space": {
+        "description": "Space metadata",
+        "uri_template": "/spaces/{space_id}",
+        "method": "GET"
+      },
+      "spaces": {
+        "description": "List all spaces",
+        "uri_template": "/spaces",
+        "method": "GET"
+      }
+    },
+    "tools": {
+      "create_node": {
+        "description": "Create a new goal/milestone/task/note node",
+        "uri_template": "/spaces/{space_id}/nodes",
+        "method": "POST",
+        "input_schema": {
+          "type": "object",
+          "required": ["title"],
+          "properties": {
+            "title": { "type": "string" },
+            "node_type": { "type": "string", "enum": ["goal", "milestone", "task", "note"] },
+            "description": { "type": "string" },
+            "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] }
+          }
+        }
+      },
+      "update_node": {
+        "description": "Update a node's fields (title, status, priority, etc.)",
+        "uri_template": "/nodes/{node_id}?space_id={space_id}",
+        "method": "PATCH",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "archived"] },
+            "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] }
+          }
+        }
+      },
+      "delete_node": {
+        "description": "Soft-delete a node",
+        "uri_template": "/nodes/{node_id}?space_id={space_id}&soft=true",
+        "method": "DELETE"
+      },
+      "ai_decompose": {
+        "description": "AI-decompose a node into sub-tasks",
+        "uri_template": "/spaces/{space_id}/ai/decompose",
+        "method": "POST",
+        "input_schema": {
+          "type": "object",
+          "required": ["node_id"],
+          "properties": {
+            "node_id": { "type": "string", "format": "uuid" },
+            "max_children": { "type": "integer", "maximum": 10 },
+            "context_hint": { "type": "string" }
+          }
+        }
+      },
+      "ai_chat": {
+        "description": "Chat with AI assistant that can read and modify the graph",
+        "uri_template": "/spaces/{space_id}/ai/chat",
+        "method": "POST",
+        "input_schema": {
+          "type": "object",
+          "required": ["message"],
+          "properties": {
+            "message": { "type": "string" },
+            "session_id": { "type": "string", "format": "uuid" }
+          }
+        }
+      }
+    }
+  },
+  "authentication": {
+    "type": "bearer_token",
+    "description": "Bearer token authentication (set via Authorization header)"
+  }
+}

@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Vue Flow canvas override ─────────────────────────────────────────── */
+.vue-flow__pane {
+  cursor: grab;
+}
+.vue-flow__pane:active {
+  cursor: grabbing;
+}
+.vue-flow__edge-path {
+  stroke: #84855c;
+  stroke-width: 2;
+}
+.vue-flow__edge.selected .vue-flow__edge-path,
+.vue-flow__edge:focus .vue-flow__edge-path {
+  stroke: #505137;
+  stroke-width: 2.5;
+}
+.vue-flow__handle {
+  width: 10px;
+  height: 10px;
+  background-color: #84855c;
+  border: 2px solid #f5f5ef;
+  border-radius: 50%;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.vue-flow__handle:hover {
+  transform: scale(1.4);
+  background-color: #505137;
+}
+.vue-flow__controls {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(80,81,55,0.15);
+}
+.vue-flow__controls button {
+  background: #f5f5ef;
+  border-bottom: 1px solid #e8e8d8;
+  color: #505137;
+}
+.vue-flow__controls button:hover {
+  background: #e8e8d8;
+}
+.vue-flow__minimap {
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(80,81,55,0.15);
+  overflow: hidden;
+}
+
+/* ── Utility classes ─────────────────────────────────────────────────── */
+@layer components {
+  .btn-olive {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
+           bg-olive-600 text-white shadow-sm
+           hover:bg-olive-700 active:bg-olive-800
+           transition-colors duration-150 select-none;
+  }
+  .btn-olive-outline {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
+           border border-olive-400 text-olive-700 bg-white
+           hover:bg-olive-50 active:bg-olive-100
+           disabled:opacity-40 disabled:cursor-not-allowed
+           transition-colors duration-150 select-none;
+  }
+}

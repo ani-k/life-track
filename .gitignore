@@ -1,0 +1,51 @@
+# Python (Backend)
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/.venv/
+backend/env/
+backend/venv/
+backend/ENV/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/alembic/__pycache__/
+backend/alembic/versions/__pycache__/
+
+# Node.js (Frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+*.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/.env.local
+frontend/.env
+
+# Local Environment / Secrets
+.env
+backend/.env
+backend/config.yaml
+
+# IDE / Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# DB / SQLite / Cache
+*.db
+*.sqlite3
+*.sqlite
+backend/dev.db
+backend/test.db
+
+# Logs
+**/logs/
+*.log

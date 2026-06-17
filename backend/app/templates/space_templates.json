@@ -1,0 +1,117 @@
+{
+  "health": {
+    "name": "Health & Wellness",
+    "description": "Track fitness, nutrition, and medical goals",
+    "nodes": [
+      {
+        "title": "Annual Health Checkup",
+        "node_type": "milestone",
+        "priority": "high",
+        "tags": ["medical"],
+        "position": {"x": 200, "y": 100}
+      },
+      {
+        "title": "Gym 3x per week",
+        "node_type": "task",
+        "priority": "medium",
+        "tags": ["fitness"],
+        "position": {"x": 200, "y": 300}
+      },
+      {
+        "title": "Meal prep Sundays",
+        "node_type": "task",
+        "priority": "medium",
+        "tags": ["nutrition"],
+        "position": {"x": 500, "y": 300}
+      },
+      {
+        "title": "Track daily water intake",
+        "node_type": "task",
+        "priority": "low",
+        "tags": ["wellness"],
+        "position": {"x": 800, "y": 300}
+      }
+    ],
+    "edges": [
+      {"source": 0, "target": 1, "edge_type": "parent_child"},
+      {"source": 0, "target": 2, "edge_type": "parent_child"},
+      {"source": 0, "target": 3, "edge_type": "parent_child"}
+    ]
+  },
+  "career": {
+    "name": "Career Development",
+    "description": "Professional growth and skill building",
+    "nodes": [
+      {
+        "title": "Senior Engineer Promotion",
+        "node_type": "goal",
+        "priority": "high",
+        "tags": ["career"],
+        "position": {"x": 400, "y": 100}
+      },
+      {
+        "title": "Complete System Design Course",
+        "node_type": "milestone",
+        "priority": "high",
+        "tags": ["learning"],
+        "position": {"x": 200, "y": 300}
+      },
+      {
+        "title": "Lead 2 major projects",
+        "node_type": "milestone",
+        "priority": "high",
+        "tags": ["leadership"],
+        "position": {"x": 600, "y": 300}
+      },
+      {
+        "title": "Mentor junior developers",
+        "node_type": "task",
+        "priority": "medium",
+        "tags": ["leadership"],
+        "position": {"x": 400, "y": 500}
+      }
+    ],
+    "edges": [
+      {"source": 0, "target": 1, "edge_type": "parent_child"},
+      {"source": 0, "target": 2, "edge_type": "parent_child"},
+      {"source": 2, "target": 3, "edge_type": "dependency"}
+    ]
+  },
+  "personal": {
+    "name": "Personal Growth",
+    "description": "Hobbies, relationships, and self-improvement",
+    "nodes": [
+      {
+        "title": "Read 12 books this year",
+        "node_type": "goal",
+        "priority": "medium",
+        "tags": ["reading"],
+        "position": {"x": 300, "y": 100}
+      },
+      {
+        "title": "Learn to play guitar",
+        "node_type": "goal",
+        "priority": "low",
+        "tags": ["hobbies"],
+        "position": {"x": 700, "y": 100}
+      },
+      {
+        "title": "Practice 30 min daily",
+        "node_type": "task",
+        "priority": "medium",
+        "tags": ["hobbies", "music"],
+        "position": {"x": 700, "y": 300}
+      },
+      {
+        "title": "Weekly family video calls",
+        "node_type": "task",
+        "priority": "high",
+        "tags": ["family"],
+        "position": {"x": 300, "y": 500}
+      }
+    ],
+    "edges": [
+      {"source": 1, "target": 2, "edge_type": "parent_child"}
+    ]
+  }
+}
