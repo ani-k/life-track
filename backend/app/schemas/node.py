@@ -98,6 +98,8 @@ class NodeResponse(NodeBase):
     """Full node representation returned by the API and stored in Vue Flow."""
     id: uuid.UUID
     space_id: uuid.UUID
+    x: float = 0.0
+    y: float = 0.0
     canvas_data: CanvasData
     ai_provenance: AIProvenance
     completed_at: datetime | None
@@ -120,8 +122,11 @@ class NodeResponse(NodeBase):
                 "priority": obj.priority,
                 "tags": obj.tags,
                 "due_date": obj.due_date,
+                "x": getattr(obj, "x", 0.0),
+                "y": getattr(obj, "y", 0.0),
                 "canvas_data": obj.canvas_data,
                 "ai_provenance": {
+                    "isGhost": False,
                     "ai_generated": getattr(obj, "ai_generated", False),
                     "ai_model": getattr(obj, "ai_model", None),
                     "ai_confidence": getattr(obj, "ai_confidence", None),

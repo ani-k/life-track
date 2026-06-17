@@ -17,6 +17,8 @@ import { useApi, ApiError } from './useApi'
 import { goalNodeToVF, goalEdgeToVF } from './useGraph'
 import type { GoalNode, GoalEdge, SubNodeProposal, DecompositionResponse, Provider } from '@/types/graph'
 
+import { layoutTree } from './useLayout'
+
 // ── Ghost node data shape ─────────────────────────────────────────────────────
 
 export interface GhostNodeData {
@@ -43,6 +45,38 @@ export function useDecompose(
     () => vfNodes.value.filter(n => n.type === 'ghostNode').length
   )
 
+  // ── Auto-Layout for whole tree ─────────────────────────────────────
+  
+  function applyTreeLayout() {
+    // 1. Prepare simple representations
+    const layoutNodes = vfNodes.value.map(n => ({
+      id: n.id,
+      width: 220,
+      height: 80,
+    }))
+    const layoutEdges = vfEdges.value.map(e => ({
+      source: e.source,
+      target: e.target,
+    }))
+
+    // 2. Perform Dagre Layout
+    const results = layoutTree(layoutNodes, layoutEdges, 'TB')
+
+    // 3. Shift coords so they don't jump too wildly — anchor parent node to its original pos
+    results.forEach(res => {
+      const targetNode = vfNodes.value.find(n => n.id === res.id)
+      if (targetNode) {
+        targetNode.position = { x: res.x, y: res.y }
+        // Save to DB (only for real, non-ghost nodes)
+        if (targetNode.type !== 'ghostNode' && !isMock.value) {
+          api.patch(`/spaces/${spaceId}/nodes/${targetNode.id}/position`, {
+            position: { x: res.x, y: res.y },
+          }).catch(err => console.error('[useDecompose] Layout save failed', err))
+        }
+      }
+    })
+  }
+
   // ── Internal: add ghost nodes to canvas ────────────────────────────
 
   function _addGhostNodes(
@@ -50,23 +84,51 @@ export function useDecompose(
     parentPosition: { x: number; y: number },
     proposals: SubNodeProposal[],
   ): void {
-    const ghosts: Node<GhostNodeData>[] = proposals.map((p, i) => ({
-      id: `ghost-${parentId}-${i}-${Date.now()}`,
-      type: 'ghostNode',
-      position: {
-        x: parentPosition.x + p.offset_x,
-        y: parentPosition.y + p.offset_y,
-      },
-      data: {
-        isGhost: true as const,
-        proposal: p,
-        parentNodeId: parentId,
-      },
-      // Non-draggable so users focus on accept/discard
-      draggable: true,
-      selectable: false,
-    }))
+    // Dynamic generation of ghost node list
+    // Dynamic generation of ghost node list
+    const ghosts: Node<GhostNodeData>[] = proposals.map((p, i) => {
+      const gId = `ghost-${parentId}-${i}-${Date.now()}`
+      return {
+        id: gId,
+        type: 'ghostNode',
+        position: {
+          x: parentPosition.x,
+          y: parentPosition.y,
+        },
+        data: {
+          isGhost: true as const,
+          proposal: p,
+          parentNodeId: parentId,
+        },
+        draggable: true,
+        selectable: false,
+      }
+    })
+
     vfNodes.value = [...vfNodes.value, ...ghosts]
+
+    // Create virtual ghost connection edges in the background to feed Dagre auto-layout
+    const ghostEdges: Edge[] = proposals.map((_p, i) => {
+      const gId = ghosts[i].id
+      return {
+        id: `e-ghost-${parentId}-${gId}`,
+        source: parentId,
+        target: gId,
+        type: 'smartEdge',
+        animated: true,
+        style: { stroke: '#d97706', strokeWidth: 2, strokeDasharray: '5,5' },
+      }
+    })
+    
+    // Inject temp edges for layout calculation representation
+    const originalEdgesLength = vfEdges.value.length
+    vfEdges.value = [...vfEdges.value, ...ghostEdges]
+
+    // Calculate layout for all nodes at once (tree top-to-bottom layout)
+    applyTreeLayout()
+
+    // Clean up temporary ghost illustration edges (keep only real ones)
+    vfEdges.value = vfEdges.value.slice(0, originalEdgesLength)
   }
 
   // ── triggerDecompose ─────────────────────────────────────────────────
@@ -126,8 +188,11 @@ export function useDecompose(
     if (!ghostVF || ghostVF.type !== 'ghostNode') return
 
     const { proposal, parentNodeId } = ghostVF.data as GhostNodeData
+    
+    // Use current updated auto-layout position
     const parentVF = vfNodes.value.find(n => n.id === parentNodeId)
     const parentPosition = parentVF?.position ?? { x: 0, y: 0 }
+    const ghostPosition = ghostVF.position
 
     // Optimistically remove ghost immediately
     vfNodes.value = vfNodes.value.filter(n => n.id !== ghostId)
@@ -137,7 +202,7 @@ export function useDecompose(
     if (isMock.value) {
       // Convert ghost → real node locally
       const newGoalNode: GoalNode = _proposalToGoalNode(
-        proposal, spaceId, parentPosition, now
+        proposal, spaceId, ghostPosition, now
       )
       vfNodes.value = [...vfNodes.value, goalNodeToVF(newGoalNode)]
       _addEdgeLocally(parentNodeId, newGoalNode.id, now)
@@ -149,7 +214,12 @@ export function useDecompose(
         `/spaces/${spaceId}/ai/decompose/accept`,
         {
           parent_node_id: parentNodeId,
-          accepted_nodes: [proposal],
+          accepted_nodes: [{
+            ...proposal,
+            // Pass the calculated auto-layout coordinates as offset relative to parent
+            offset_x: ghostPosition.x - parentPosition.x,
+            offset_y: ghostPosition.y - parentPosition.y,
+          }],
           parent_position: parentPosition,
           suggested_edge_type: 'parent_child',
         },
@@ -162,7 +232,7 @@ export function useDecompose(
       }
     } catch {
       // Fallback: persist locally even if API fails
-      const newGoalNode = _proposalToGoalNode(proposal, spaceId, parentPosition, now)
+      const newGoalNode = _proposalToGoalNode(proposal, spaceId, ghostPosition, now)
       vfNodes.value = [...vfNodes.value, goalNodeToVF(newGoalNode)]
       _addEdgeLocally(parentNodeId, newGoalNode.id, now)
     }
@@ -219,7 +289,7 @@ export function useDecompose(
   function _proposalToGoalNode(
     proposal: SubNodeProposal,
     spaceId: string,
-    parentPosition: { x: number; y: number },
+    targetPosition: { x: number; y: number },
     now: string,
   ): GoalNode {
     return {
@@ -237,8 +307,8 @@ export function useDecompose(
       updated_at: now,
       canvas_data: {
         position: {
-          x: parentPosition.x + proposal.offset_x,
-          y: parentPosition.y + proposal.offset_y,
+          x: targetPosition.x,
+          y: targetPosition.y,
         },
         dimensions: { width: 220, height: 80 },
         style: { color: '#84855c', icon: null },

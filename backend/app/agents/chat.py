@@ -508,6 +508,7 @@ class ChatOrchestrator:
                     source_id=source_id,
                     target_id=target_id,
                     edge_type=args.get("edge_type", "parent_child"),
+                    ai_generated=False, # Сплошные стрелки при создании связей ИИ-ассистентом
                 )
                 mutations.append(GraphMutationAction(
                     action="add_edge",

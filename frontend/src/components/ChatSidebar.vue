@@ -31,10 +31,10 @@
     <!-- Message list -->
     <div ref="scrollContainer" class="flex-1 overflow-y-auto px-3 py-4 space-y-3">
       <!-- Empty state -->
-      <div v-if="chat.messages.value.length === 0" class="text-center text-zinc-500 text-sm mt-8">
-        <p class="text-2xl mb-2">💬</p>
-        <p>Ask me anything about your goals.</p>
-        <p class="mt-1 text-xs text-zinc-600">I can create nodes, connect ideas, and update statuses.</p>
+      <div v-if="chat.messages.value.length === 0" class="text-center text-zinc-500 text-sm mt-8 p-4">
+        <p class="text-3xl mb-3">💬</p>
+        <p class="text-zinc-300 font-semibold mb-2 text-base">I can create nodes, connect ideas, and update statuses.</p>
+        <p class="text-xs text-zinc-400">Ask me anything about your goals or suggest changes to your canvas.</p>
       </div>
 
       <!-- Messages -->

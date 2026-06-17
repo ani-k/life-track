@@ -9,8 +9,7 @@
  */
 import { ref, computed } from 'vue'
 import type { Node, Edge } from '@vue-flow/core'
-import { useApi, ApiError } from './useApi'
-import { mockGraph } from '@/data/mockGraph'
+import { useApi } from './useApi'
 import type {
   GoalNode, GoalEdge, GraphResponse,
   NodeCreate, NodeStatus, Position,
@@ -19,12 +18,15 @@ import type {
 // ── Converters ────────────────────────────────────────────────────────────────
 
 export function goalNodeToVF(node: GoalNode): Node<GoalNode> {
+  // Always favor the database mirrored coordinates (node.x, node.y) over mock defaults or canvas_data hierarchy
+  const x = (typeof node.x === 'number') ? node.x : (node.canvas_data?.position?.x ?? 200.0)
+  const y = (typeof node.y === 'number') ? node.y : (node.canvas_data?.position?.y ?? 200.0)
   return {
     id: node.id,
     type: 'goalNode',
-    position: { ...node.canvas_data.position },
+    position: { x, y },
     data: node,
-    style: { width: `${node.canvas_data.dimensions.width}px` },
+    style: { width: `${node.canvas_data?.dimensions?.width ?? 220}px` },
   }
 }
 
@@ -33,12 +35,12 @@ export function goalEdgeToVF(edge: GoalEdge): Edge<GoalEdge> {
     id: edge.id,
     source: edge.source_id,
     target: edge.target_id,
-    // Use smartEdge for all edges to enable insertion
     type: 'smartEdge',
     label: edge.label ?? undefined,
-    animated: edge.ai_generated,
-    style: { stroke: edge.style.stroke, strokeWidth: edge.style.stroke_width },
-    markerEnd: edge.style.marker_end,
+    // Solid stroke for all persistent canvas edges!
+    animated: false,
+    style: { stroke: edge.style.stroke || '#84855c', strokeWidth: edge.style.stroke_width || 2 },
+    markerEnd: edge.style.marker_end || 'arrow',
     data: edge,
   }
 }
@@ -70,14 +72,9 @@ export function useGraph(spaceId: string) {
       _applyGraph(graph)
       isMock.value = false
     } catch (err) {
-      // Graceful degradation: use mock data when backend is unreachable
-      if (err instanceof ApiError || err instanceof TypeError) {
-        console.warn('[useGraph] API unavailable — loading mock data', err.message)
-        _applyGraph(mockGraph)
-        isMock.value = true
-      } else {
-        error.value = err instanceof Error ? err.message : 'Unknown error'
-      }
+      // Graceful degradation: do NOT use mock data globally. Show empty space or report actual DB state.
+      console.error('[useGraph] Error loading graph:', err)
+      error.value = err instanceof Error ? err.message : 'Unknown error'
     } finally {
       isLoading.value = false
     }
@@ -151,7 +148,10 @@ export function useGraph(spaceId: string) {
     if (isMock.value) return
 
     try {
-      await api.patch(`/spaces/${spaceId}/nodes/${nodeId}/position`, { position })
+      await api.patch(`/spaces/${spaceId}/nodes/${nodeId}/position`, {
+        x: position.x,
+        y: position.y,
+      })
     } catch (err) {
       console.error('[useGraph] Failed to persist position', err)
       // Non-critical — do not roll back, just log
@@ -163,11 +163,19 @@ export function useGraph(spaceId: string) {
     if (idx === -1) return
     const node = vfNodes.value[idx]
     if (!node.data) return
+    
+    // Update both x, y on direct data payload and inner canvas_data.position
     vfNodes.value = vfNodes.value.with(idx, {
       ...node,
+      position,
       data: {
         ...node.data,
-        canvas_data: { ...node.data.canvas_data, position },
+        x: position.x,
+        y: position.y,
+        canvas_data: { 
+          ...node.data.canvas_data, 
+          position: { x: position.x, y: position.y } 
+        },
       },
     })
   }
@@ -245,10 +253,10 @@ export function useGraph(spaceId: string) {
   }
 
   /**
-   * Delete a node (soft delete by default)
+   * Delete a node (hard delete by default, so they are physically removed)
    */
-  async function deleteNode(nodeId: string, soft: boolean = true): Promise<GoalNode | undefined> {
-    const endpoint = `/nodes/${nodeId}?space_id=${spaceId}&soft=${soft}`
+  async function deleteNode(nodeId: string, _soft: boolean = false): Promise<GoalNode | undefined> {
+    const endpoint = `/nodes/${nodeId}?space_id=${spaceId}&soft=false`
     
     // Store node data for potential undo
     const deletedNode = (vfNodes.value as any[]).find((n: any) => n.id === nodeId)

@@ -83,6 +83,8 @@ async def seed_from_template(
             tags=node_def.get("tags", []),
             status="pending",
             priority=node_def.get("priority", "medium"),
+            x=float(pos["x"]),
+            y=float(pos["y"]),
             canvas_data={
                 "position": {"x": pos["x"], "y": pos["y"]},
                 "dimensions": {"width": 220, "height": 80},

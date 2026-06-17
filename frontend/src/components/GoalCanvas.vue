@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, provide, onMounted, markRaw, computed } from 'vue'
+import { ref, provide, onMounted, onUnmounted, markRaw, computed } from 'vue'
 import {
   VueFlow, useVueFlow,
   type NodeDragEvent, type NodeMouseEvent, type Connection,
@@ -12,13 +12,13 @@ import { useGraph } from '@/composables/useGraph'
 import { useDecompose } from '@/composables/useDecompose'
 import { useModelSelector } from '@/composables/useModelSelector'
 import { useMutationApplier } from '@/composables/useMutationApplier'
+import { useUndoHistory } from '@/composables/useUndoHistory'
 import type { NodeCreate, NodeStatus, Provider } from '@/types/graph'
 import GoalNode from './GoalNode.vue'
 import GhostNode from './GhostNode.vue'
 import ChatSidebar from './ChatSidebar.vue'
 import NodeEditor from './NodeEditor.vue'
 import TemplatePicker from './TemplatePicker.vue'
-import UndoToast from './UndoToast.vue'
 import SmartEdge from './SmartEdge.vue'
 import SpaceSelector from './SpaceSelector.vue'
 import CreateSpaceModal from './CreateSpaceModal.vue'
@@ -50,6 +50,9 @@ const {
   loadGraph, createNode, patchNodePosition, patchNodeStatus, updateNode, deleteNode,
 } = useGraph(props.spaceId)
 
+// ── Undo History System ────────────────────────────────────────────────
+const undoHistory = useUndoHistory(vfNodes as any, vfEdges as any, props.spaceId, loadGraph)
+
 // ── Model selector ─────────────────────────────────────────────────────
 const { selectedProvider, localModel, modelLabel } = useModelSelector()
 const showModelDropdown = ref(false)
@@ -62,8 +65,17 @@ const {
 } = useDecompose(props.spaceId, vfNodes as any, vfEdges as any, isMock, selectedProvider, localModel)
 
 // ── Mutation applier + chat sidebar ────────────────────────────────────
-const { applyMutations } = useMutationApplier(vfNodes as any, vfEdges as any, props.spaceId)
-const showChat = ref(false)
+const baseApplier = useMutationApplier(vfNodes as any, vfEdges as any, props.spaceId)
+
+function applyMutations(mutations: import('@/types/graph').GraphMutationAction[]) {
+  // Record changes in Undo Stack before mutation execution!
+  undoHistory.recordTurn(mutations)
+  return baseApplier.applyMutations(mutations)
+}
+
+const showChat = ref(true)
+
+import { layoutTree } from '@/composables/useLayout'
 
 // ── Provide actions to child nodes ─────────────────────────────────────
 export interface GraphActions {
@@ -79,8 +91,93 @@ export interface DecomposeActions {
 provide<GraphActions>('graphActions', { patchNodeStatus, triggerDecompose, deleteNode: handleDeleteNode })
 provide<DecomposeActions>('decomposeActions', { acceptProposal, discardProposal })
 
+// ── Auto-Layout Function ───────────────────────────────────────────────
+function applyAutoLayout() {
+  const nodesForLayout = (vfNodes.value as any[])
+    .filter((n: any) => n.type !== 'ghostNode')
+    .map((n: any) => ({ id: n.id, width: 220, height: 80 }))
+  
+  const edgesForLayout = (vfEdges.value as any[])
+    .map((e: any) => ({ source: e.source, target: e.target }))
+
+  if (nodesForLayout.length === 0) return
+
+  const computedCoords = layoutTree(nodesForLayout, edgesForLayout, 'TB')
+  
+  // Apply positions back to vfNodes and persist to DB
+  computedCoords.forEach(coord => {
+    const node = vfNodes.value.find(n => n.id === coord.id)
+    if (node) {
+      node.position = { x: coord.x, y: coord.y }
+      patchNodePosition(coord.id, { x: coord.x, y: coord.y })
+    }
+  })
+}
+
+// Exposure to template or window for dev/usage
+(window as any).applyAutoLayout = applyAutoLayout
+
 // ── Vue Flow instance ──────────────────────────────────────────────────
 const { screenToFlowCoordinate, fitView } = useVueFlow()
+
+// Mode toggle: 'drag' or 'select'
+const canvasMode = ref<'drag' | 'select'>('drag')
+
+// Selected items to delete tracking
+const selectedElementsCount = computed(() => {
+  const nodes = (vfNodes.value as any[]).filter(n => n.selected).length
+  const edges = (vfEdges.value as any[]).filter(e => e.selected).length
+  return nodes + edges
+})
+
+async function deleteSelectedBundle() {
+  const chosenNodes = (vfNodes.value as any[]).filter(n => n.selected && n.type !== 'ghostNode')
+  
+  if (chosenNodes.length === 0) return
+
+  // Register state for Undo!
+  const mutations: import('@/types/graph').GraphMutationAction[] = []
+  
+  chosenNodes.forEach(rn => {
+    mutations.push({
+      action: 'delete_node',
+      payload: { id: rn.id }
+    })
+  });
+  
+  (undoHistory as any).recordTurn(mutations)
+
+  // Physically remove from database/view
+  for (const n of chosenNodes) {
+    try {
+      await deleteNode(n.id, false)
+    } catch (e) {
+      console.error('Failed to wipe node:', n.id, e)
+    }
+  }
+
+  handleNotify({ type: 'success', message: `Deleted ${chosenNodes.length} nodes successfully.` })
+}
+
+// Global Backspace & Delete keyboard listeners
+function handleGlobalKeys(e: KeyboardEvent) {
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    // Check if target is an input/textarea to not hijack writing
+    const activeEl = document.activeElement
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.getAttribute('contenteditable') === 'true')) {
+      return
+    }
+    deleteSelectedBundle()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeys)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeys)
+})
 
 // ── Add node modal ─────────────────────────────────────────────────────
 const showAddModal    = ref(false)
@@ -103,7 +200,7 @@ const canvasIsEmpty = computed(() =>
   (vfNodes.value as any[]).filter((n: any) => n.type !== 'ghostNode').length === 0
 )
 
-// Show template picker when canvas is empty and not loading
+// Show template picker when CANVAS IS EMPTY and not loading AND it was NOT closed by user (Start from scratch)
 const shouldShowTemplatePicker = computed(() => 
   canvasIsEmpty.value && !isLoading.value && showTemplatePicker.value
 )
@@ -120,46 +217,21 @@ async function handleTemplateSelected(templateKey: string | null) {
 }
 
 // ── Undo system ────────────────────────────────────────────────────────
-interface UndoState {
-  type: 'delete'
-  nodeId: string
-  nodeTitle: string
-}
-
-const showUndo = ref(false)
-const undoState = ref<UndoState | null>(null)
-
 async function handleDeleteNode(nodeId: string) {
   const node = (vfNodes.value as any[]).find((n: any) => n.id === nodeId)
   if (!node) return
   
-  undoState.value = {
-    type: 'delete',
-    nodeId: nodeId,
-    nodeTitle: node.data?.title ?? 'node',
-  }
+  // Register full turn in global Undo History system
+  undoHistory.recordTurn([{
+    action: 'delete_node',
+    payload: { id: nodeId }
+  }])
   
   try {
-    await deleteNode(nodeId, true) // soft delete
-    showUndo.value = true
+    await deleteNode(nodeId, false) // Hard delete for clean canvas!
   } catch (err) {
     console.error('Failed to delete node:', err)
   }
-}
-
-async function handleUndo() {
-  if (!undoState.value || undoState.value.type !== 'delete') return
-  
-  // For soft-deleted nodes, we can restore by reloading
-  // (In a full implementation, you'd call a restore endpoint)
-  await loadGraph()
-  showUndo.value = false
-  undoState.value = null
-}
-
-function handleCloseUndo() {
-  showUndo.value = false
-  undoState.value = null
 }
 
 // ── Space management ───────────────────────────────────────────────────
@@ -183,6 +255,28 @@ function handleOpenCreateSpace() {
   showCreateSpaceModal.value = true
 }
 
+async function handleSystemUndo() {
+  try {
+    const notify_msg = await undoHistory.triggerUndo()
+    if (notify_msg) {
+      handleNotify({ type: 'success', message: notify_msg })
+    }
+  } catch (err: any) {
+    handleNotify({ type: 'error', message: err.message || 'Undo action failed' })
+  }
+}
+
+async function handleSystemRedo() {
+  try {
+    const notify_msg = await undoHistory.triggerRedo()
+    if (notify_msg) {
+      handleNotify({ type: 'success', message: notify_msg })
+    }
+  } catch (err: any) {
+    handleNotify({ type: 'error', message: err.message || 'Redo action failed' })
+  }
+}
+
 function handleNotify(payload: { type: 'success' | 'error'; message: string }) {
   toastManager.value?.addToast(payload.type, payload.message)
 }
@@ -198,8 +292,11 @@ onMounted(async () => {
   // Show template picker if canvas is empty after load
   if (canvasIsEmpty.value) {
     showTemplatePicker.value = true
+  } else {
+    showTemplatePicker.value = false
   }
-  setTimeout(() => fitView({ padding: 0.2, duration: 600 }), 100)
+  // Remove default simulated auto layout on first load to preserve manual drag
+  setTimeout(() => fitView({ padding: 0.2, duration: 600 }), 150)
 })
 
 // ── Canvas event handlers ──────────────────────────────────────────────
@@ -229,10 +326,21 @@ function onConnect(connection: Connection) {
       id: `e-${Date.now()}`,
       source: connection.source,
       target: connection.target,
-      type: 'smoothstep',
+      type: 'smartEdge',
       style: { stroke: '#84855c', strokeWidth: 2 },
     },
   ] as any
+}
+
+async function onNodesDelete(deletedNodes: any[]) {
+  for (const n of deletedNodes) {
+    if (n.type === 'ghostNode') continue
+    try {
+      await deleteNode(n.id, false) // Hard delete from database
+    } catch (err) {
+      console.error('Multi delete failed for node', n.id, err)
+    }
+  }
 }
 
 // ── Model selector ─────────────────────────────────────────────────────
@@ -506,6 +614,9 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
           Add Node
         </button>
 
+        <!-- Selection / Keyboard guide -->
+        <!-- Removed legacy guid text as we have modern direct HTML action overlay cards and fixed selectors -->
+
         <!-- Chat toggle -->
         <button
           class="btn-olive-outline"
@@ -522,29 +633,99 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
     </header>
 
     <!-- ── Vue Flow Canvas ──────────────────────────────────────── -->
-    <VueFlow
-      v-model:nodes="vfNodes"
-      v-model:edges="vfEdges"
-      :node-types="nodeTypes"
-      :edge-types="edgeTypes"
-      :min-zoom="0.1"
-      :max-zoom="4"
-      fit-view-on-init
-      elevate-nodes-on-select
-      class="pt-[52px]"
-      @node-drag-stop="onNodeDragStop"
-      @node-click="onNodeClick"
-      @pane-click="onPaneClick"
-      @connect="onConnect"
-    >
-      <Background :variant="BackgroundVariant.Dots" :gap="24" :size="1.2" pattern-color="#b9ba88" />
-      <Controls position="bottom-right" />
-      <MiniMap
-        position="bottom-left"
-        :node-color="(n) => n.data?.canvas_data?.style?.color ?? '#84855c'"
-        mask-color="rgba(245,245,239,0.85)"
-      />
-    </VueFlow>
+    <div class="relative w-full h-full pt-[52px]">
+      <VueFlow
+        v-model:nodes="vfNodes"
+        v-model:edges="vfEdges"
+        :node-types="nodeTypes"
+        :edge-types="edgeTypes"
+        :min-zoom="0.1"
+        :max-zoom="4"
+        fit-view-on-init
+        elevate-nodes-on-select
+        :multi-selection-key="null"
+        :delete-key-code="null"
+        :pane-carousal-speed="0"
+        :pan-on-drag="canvasMode === 'drag'"
+        :selection-on-drag="canvasMode === 'select'"
+        class="w-full h-full"
+        @node-drag-stop="onNodeDragStop"
+        @node-click="onNodeClick"
+        @pane-click="onPaneClick"
+        @connect="onConnect"
+        @nodes-delete="onNodesDelete"
+      >
+        <Background :variant="BackgroundVariant.Dots" :gap="24" :size="1.2" pattern-color="#b9ba88" />
+        <Controls position="bottom-right" />
+        <MiniMap
+          position="bottom-left"
+          :node-color="(n) => n.data?.canvas_data?.style?.color ?? '#84855c'"
+          mask-color="rgba(245,245,239,0.85)"
+        />
+      </VueFlow>
+
+      <!-- Custom Canvas Overlays (Placed OUTSIDE VueFlow as siblings so they are guaranteed to render and not get swallowed by canvas rendering pipeline) -->
+      <!-- Fix control overlays: mode selectors and undo/redo panel -->
+      <div class="absolute bottom-6 left-[180px] z-30 bg-zinc-900/90 border border-zinc-700 text-zinc-100 flex items-center rounded-xl p-1 shadow-2xl backdrop-blur">
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all"
+          :class="canvasMode === 'drag' ? 'bg-olive-600 text-white font-bold' : 'hover:bg-zinc-800 text-zinc-400'"
+          @click="canvasMode = 'drag'"
+        >
+          <span>🖐️</span> Drag mode
+        </button>
+        <div class="h-4 w-px bg-zinc-700 mx-1"></div>
+        <button
+          type="button"
+          class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all"
+          :class="canvasMode === 'select' ? 'bg-olive-600 text-white font-bold' : 'hover:bg-zinc-800 text-zinc-400'"
+          @click="canvasMode = 'select'"
+        >
+          <span>✨</span> Selection Mode
+        </button>
+      </div>
+
+      <!-- Floating action card for selected items (with Delete button) -->
+      <Transition name="fade">
+        <div
+          v-if="selectedElementsCount > 0"
+          class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 bg-zinc-900 border border-zinc-700 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-4 text-zinc-100 backdrop-blur"
+        >
+          <span class="text-sm font-semibold text-zinc-300">Selected: <strong class="text-white">{{ selectedElementsCount }}</strong> items</span>
+          <button
+            type="button"
+            class="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-lg transition-all flex items-center gap-1.5"
+            @click="deleteSelectedBundle"
+          >
+            <span>🗑️</span> Delete Selection [Del]
+          </button>
+        </div>
+      </Transition>
+
+// Floating Fixed Undo/Redo arrows panel top-left below title
+      <div class="absolute top-20 left-6 z-35 bg-zinc-900/90 border border-zinc-700 rounded-xl p-1 flex items-center shadow-lg backdrop-blur">
+        <button
+          type="button"
+          class="p-2 rounded-lg text-sm transition-all text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+          :disabled="!undoHistory.canUndo()"
+          title="Undo Last Action"
+          @click="handleSystemUndo"
+        >
+          <span class="font-bold">↩</span>
+        </button>
+        <div class="h-4 w-px bg-zinc-700 mx-0.5"></div>
+        <button
+          type="button"
+          class="p-2 rounded-lg text-sm transition-all text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+          :disabled="!undoHistory.canRedo()"
+          title="Redo Undone Action"
+          @click="handleSystemRedo"
+        >
+          <span class="font-bold">↪</span>
+        </button>
+      </div>
+    </div>
 
     <!-- ── Add Node Modal ───────────────────────────────────────── -->
     <NodeEditor
@@ -569,14 +750,6 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
       v-if="shouldShowTemplatePicker"
       :space-id="spaceId"
       @template-selected="handleTemplateSelected"
-    />
-
-    <!-- ── Undo Toast ────────────────────────────────────────────── -->
-    <UndoToast
-      :show="showUndo"
-      :message="`Deleted '${undoState?.nodeTitle || 'node'}'. `"
-      @undo="handleUndo"
-      @close="handleCloseUndo"
     />
 
     <!-- ── Chat Sidebar ─────────────────────────────────────────── -->

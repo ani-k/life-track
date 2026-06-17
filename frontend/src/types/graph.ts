@@ -61,6 +61,8 @@ export interface GoalNode {
   completed_at: string | null
   created_at: string
   updated_at: string
+  x?: number
+  y?: number
   canvas_data: CanvasData
   ai_provenance: AIProvenance
 }

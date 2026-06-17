@@ -26,7 +26,9 @@ async def get_node(
 
 
 async def list_nodes(db: AsyncSession, space_id: uuid.UUID) -> list[Node]:
-    result = await db.execute(select(Node).where(Node.space_id == space_id))
+    result = await db.execute(
+        select(Node).where(Node.space_id == space_id, Node.status != "archived")
+    )
     return list(result.scalars().all())
 
 
@@ -52,6 +54,8 @@ async def create_node_from_proposal(
         tags=proposal.tags,
         status="pending",
         priority=proposal.priority,
+        x=float(parent_position.x + proposal.offset_x),
+        y=float(parent_position.y + proposal.offset_y),
         canvas_data={
             "position": {
                 "x": parent_position.x + proposal.offset_x,
@@ -81,7 +85,34 @@ async def create_node_raw(
     y: float = 200.0,
     ai_model: str = "chat-tool",
 ) -> Node:
-    """Create a node directly (from AI chat tool call)."""
+    """Create a node directly (from AI chat tool call) with auto-shifting layout to avoid stacking/overlapping."""
+    # To prevent node stacking, dynamically scan if this position is busy, and shift.
+    fixed_x = float(x)
+    fixed_y = float(y)
+    
+    # Simple collision shifting: check if a node already exists near this point
+    existing_result = await db.execute(
+        select(Node).where(Node.space_id == space_id, Node.status != "archived")
+    )
+    existing_nodes = existing_result.scalars().all()
+    
+    collision = True
+    passes = 0
+    while collision and passes < 40:
+        collision = False
+        for old_node in existing_nodes:
+            # If distance is less than width (220px) and height (80px), shift horizontally
+            dx = abs(old_node.x - fixed_x)
+            dy = abs(old_node.y - fixed_y)
+            if dx < 240 and dy < 120:
+                fixed_x += 260.0 # shift to the right
+                if fixed_x > 1800: # wrap around the imaginary row
+                    fixed_x = 100.0 + (passes * 30)
+                    fixed_y += 140.0
+                collision = True
+                break
+        passes += 1
+
     node = Node(
         space_id=space_id,
         node_type=node_type,
@@ -90,8 +121,10 @@ async def create_node_raw(
         tags=[],
         status="pending",
         priority=priority,
+        x=fixed_x,
+        y=fixed_y,
         canvas_data={
-            "position": {"x": x, "y": y},
+            "position": {"x": fixed_x, "y": fixed_y},
             "dimensions": {"width": 220, "height": 80},
             "style": {"color": "#84855c", "icon": None},
             "collapsed": False,
@@ -126,7 +159,7 @@ async def create_edge(
     source_id: uuid.UUID,
     target_id: uuid.UUID,
     edge_type: str = "parent_child",
-    ai_generated: bool = True,
+    ai_generated: bool = False, # Сплошные стрелки при создании связей по умолчанию!
 ) -> Edge:
     edge = Edge(
         space_id=space_id,
@@ -134,7 +167,7 @@ async def create_edge(
         target_id=target_id,
         edge_type=edge_type,
         style={
-            "animated": True,
+            "animated": False, # Убираем анимацию пунктира, делаем сплошными!
             "stroke": "#84855c",
             "stroke_width": 2,
             "marker_end": "arrow",

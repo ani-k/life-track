@@ -147,6 +147,9 @@ async def create_node_in_space(
     if space is None:
         raise HTTPException(status_code=404, detail=f"Space {space_id} not found")
 
+    canvas_dict = payload.canvas_data.model_dump() if payload.canvas_data else {}
+    pos = canvas_dict.get("position", {"x": 200.0, "y": 200.0})
+
     node = Node(
         space_id=space_id,
         title=payload.title,
@@ -156,7 +159,14 @@ async def create_node_in_space(
         priority=payload.priority,
         tags=payload.tags,
         due_date=payload.due_date,
-        canvas_data=payload.canvas_data.model_dump(),
+        x=float(pos.get("x", 200.0)),
+        y=float(pos.get("y", 200.0)),
+        canvas_data=payload.canvas_data.model_dump() if payload.canvas_data else {
+            "position": {"x": 200.0, "y": 200.0},
+            "dimensions": {"width": 220.0, "height": 80.0},
+            "style": {"color": "#84855c", "icon": None},
+            "collapsed": False,
+        },
     )
     db.add(node)
     await db.flush()
@@ -178,6 +188,10 @@ async def update_node_position(
     node = result.scalar_one_or_none()
     if node is None:
         raise HTTPException(status_code=404, detail=f"Node {node_id} not found in space {space_id}")
+
+    # Save directly to mirrored x, y
+    node.x = float(position.x)
+    node.y = float(position.y)
 
     canvas = dict(node.canvas_data)
     canvas["position"] = {"x": position.x, "y": position.y}
