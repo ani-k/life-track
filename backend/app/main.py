@@ -18,26 +18,30 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """
-    Run Alembic migrations on startup so the schema is always up-to-date.
-    This removes the need to manually run `alembic upgrade head`.
-
-    In production, replace with a CI/CD migration step so startup is fast
-    and migrations are auditable.
+    On startup:
+      - Automatically apply database schema if using SQLite.
+      - Disposes the async engine pool on shutdown.
     """
-    from alembic.config import Config
-    from alembic import command
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
+    if "sqlite" in settings.database_url:
+        from app.models.base import Base
+        # Create tables programmatically for SQLite in-memory/local setup
+        async with get_engine().begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    else:
+        from alembic.config import Config
+        from alembic import command
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
 
-    def _run_migrations() -> None:
-        cfg = Config()
-        cfg.set_main_option("script_location", "alembic")
-        cfg.set_main_option("sqlalchemy.url", settings.database_url)
-        command.upgrade(cfg, "head")
+        def _run_migrations() -> None:
+            cfg = Config()
+            cfg.set_main_option("script_location", "alembic")
+            cfg.set_main_option("sqlalchemy.url", settings.database_url)
+            command.upgrade(cfg, "head")
 
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        await loop.run_in_executor(pool, _run_migrations)
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            await loop.run_in_executor(pool, _run_migrations)
 
     yield
 

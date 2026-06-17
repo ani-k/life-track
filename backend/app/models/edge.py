@@ -11,11 +11,10 @@ Edge types:
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, ForeignKey, Enum as SAEnum, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import String, ForeignKey, Enum as SAEnum, CheckConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TimestampMixin, new_uuid
+from .base import Base, TimestampMixin, GUID, new_uuid
 
 if TYPE_CHECKING:
     from .space import Space
@@ -33,22 +32,22 @@ class Edge(Base, TimestampMixin):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=new_uuid
+        GUID, primary_key=True, default=new_uuid
     )
     space_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False, index=True
+        GUID, ForeignKey("spaces.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     source_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
+        GUID, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
     )
     target_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
+        GUID, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     # For cross_space edges, store the foreign space reference
     target_space_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
+        GUID, ForeignKey("spaces.id", ondelete="SET NULL"), nullable=True
     )
 
     edge_type: Mapped[str] = mapped_column(
@@ -57,13 +56,13 @@ class Edge(Base, TimestampMixin):
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     # Vue Flow visual style (animated, stroke color, marker type)
-    style: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    style: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     ai_generated: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    space: Mapped["Space"] = relationship("Space", foreign_keys=[space_id], back_populates="edges")
-    source_node: Mapped["Node"] = relationship("Node", foreign_keys=[source_id], back_populates="outgoing_edges")
-    target_node: Mapped["Node"] = relationship("Node", foreign_keys=[target_id], back_populates="incoming_edges")
+    space: Mapped["Space"] = relationship("Space", foreign_keys=[space_id], back_populates="edges", primaryjoin="Space.id == Edge.space_id")
+    source_node: Mapped["Node"] = relationship("Node", foreign_keys=[source_id], back_populates="outgoing_edges", primaryjoin="Node.id == Edge.source_id")
+    target_node: Mapped["Node"] = relationship("Node", foreign_keys=[target_id], back_populates="incoming_edges", primaryjoin="Node.id == Edge.target_id")
 
     def __repr__(self) -> str:
         return f"<Edge {self.source_id} --[{self.edge_type}]--> {self.target_id}>"

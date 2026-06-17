@@ -5,7 +5,7 @@
   "description": "LifeTrack — visual life-planning canvas with AI-powered goal decomposition and graph management",
   "transport": {
     "type": "http",
-    "base_url": "http://localhost:8000/api/v1",
+    "base_url": "http://localhost:8082/api/v1",
     "headers": {
       "Content-Type": "application/json"
     }

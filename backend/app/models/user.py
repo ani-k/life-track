@@ -1,16 +1,15 @@
 import uuid
 from sqlalchemy import String, Boolean
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TimestampMixin, new_uuid
+from .base import Base, TimestampMixin, GUID, new_uuid
 
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=new_uuid
+        GUID, primary_key=True, default=new_uuid
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)

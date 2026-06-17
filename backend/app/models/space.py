@@ -10,11 +10,10 @@ auth_status: MVP — no authentication yet.
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, Text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TimestampMixin, new_uuid
+from .base import Base, TimestampMixin, GUID, new_uuid
 
 if TYPE_CHECKING:
     from .node import Node
@@ -25,23 +24,23 @@ class Space(Base, TimestampMixin):
     __tablename__ = "spaces"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=new_uuid
+        GUID, primary_key=True, default=new_uuid
     )
     # TODO(auth): once User model and JWT are active, restore:
     #   user_id: Mapped[uuid.UUID] = mapped_column(
-    #       UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+    #       GUID, ForeignKey("users.id", ondelete="CASCADE"),
     #       nullable=False, index=True
     #   )
     # For MVP: stored for tracking, no FK enforced, nullable.
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True, index=True
+        GUID, nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Persists the viewport state (pan + zoom) for canvas restoration
     viewport: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, default=lambda: {"x": 0, "y": 0, "zoom": 1.0}
+        JSON, nullable=False, default=lambda: {"x": 0, "y": 0, "zoom": 1.0}
     )
 
     nodes: Mapped[list["Node"]] = relationship(
@@ -51,7 +50,8 @@ class Space(Base, TimestampMixin):
         "Edge",
         foreign_keys="[Edge.space_id]",
         back_populates="space",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        primaryjoin="Space.id == Edge.space_id"
     )
 
     def __repr__(self) -> str:
