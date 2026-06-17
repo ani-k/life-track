@@ -15,8 +15,8 @@ from app.models.space import Space
 from app.models.node import Node
 from app.schemas.graph import SpaceCreate, SpaceResponse, GraphResponse, SpaceUpdate
 from app.schemas.node import NodeCreate, NodeUpdate, NodeResponse, Position
-from app.crud.node import list_nodes, list_edges
-from app.schemas.edge import EdgeResponse
+from app.crud.node import list_nodes, list_edges, create_edge
+from app.schemas.edge import EdgeResponse, EdgeCreate
 
 router = APIRouter(prefix="/spaces", tags=["spaces"])
 
@@ -150,7 +150,7 @@ async def create_node_in_space(
     canvas_dict = payload.canvas_data.model_dump() if payload.canvas_data else {}
     pos = canvas_dict.get("position", {"x": 200.0, "y": 200.0})
 
-    node = Node(
+    node_kwargs: dict = dict(
         space_id=space_id,
         title=payload.title,
         description=payload.description,
@@ -168,6 +168,9 @@ async def create_node_in_space(
             "collapsed": False,
         },
     )
+    if payload.id is not None:
+        node_kwargs["id"] = payload.id
+    node = Node(**node_kwargs)
     db.add(node)
     await db.flush()
     await db.refresh(node)
@@ -226,3 +229,42 @@ async def update_node_status(
     await db.flush()
     await db.refresh(node)
     return NodeResponse.model_validate(node)
+
+
+@router.post("/{space_id}/edges", response_model=EdgeResponse, status_code=201)
+async def create_edge_in_space(
+    space_id: uuid.UUID,
+    payload: EdgeCreate,
+    db: AsyncSession = Depends(get_db),
+) -> EdgeResponse:
+    """Create a new edge between two nodes in the given space."""
+    edge = await create_edge(
+        db,
+        space_id=space_id,
+        source_id=payload.source_id,
+        target_id=payload.target_id,
+        edge_type=payload.edge_type,
+        ai_generated=False,
+    )
+    await db.refresh(edge)
+    return EdgeResponse.model_validate(edge)
+
+
+@router.delete("/{space_id}/edges/{edge_id}", status_code=204)
+async def delete_edge_in_space(
+    space_id: uuid.UUID,
+    edge_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an edge by ID."""
+    from app.models.edge import Edge
+    from fastapi import Response
+    result = await db.execute(
+        select(Edge).where(Edge.id == edge_id, Edge.space_id == space_id)
+    )
+    edge = result.scalar_one_or_none()
+    if edge is None:
+        raise HTTPException(status_code=404, detail=f"Edge {edge_id} not found in space {space_id}")
+    await db.delete(edge)
+    await db.flush()
+    return Response(status_code=204)

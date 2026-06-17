@@ -71,6 +71,9 @@ class NodeBase(BaseModel):
 
 class NodeCreate(NodeBase):
     canvas_data: CanvasData = Field(default_factory=CanvasData)
+    # Optional: pass a specific UUID to restore a previously deleted node (undo).
+    # If omitted, the database generates a new UUID.
+    id: uuid.UUID | None = None
     # AI provenance is set server-side; not accepted from client on creation
     # (prevents spoofing ai_generated=True)
 

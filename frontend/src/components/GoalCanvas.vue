@@ -46,9 +46,20 @@ const edgeTypes = {
 const {
   vfNodes, vfEdges,
   isLoading, error, isMock,
-  selectedNode, selectNode,
+  selectNode,
   loadGraph, createNode, patchNodePosition, patchNodeStatus, updateNode, deleteNode,
 } = useGraph(props.spaceId)
+
+// activeNode: единственный выделенный узел (из VueFlow selected state).
+// Используется для AI Decompose и чипа в тулбаре.
+// Работает при любом способе выделения: клик, drag-select, после редактирования.
+const activeNode = computed<import('@/types/graph').GoalNode | null>(() => {
+  const selected = (vfNodes.value as any[]).filter(
+    n => n.selected && n.type !== 'ghostNode'
+  )
+  if (selected.length === 1) return selected[0].data as import('@/types/graph').GoalNode
+  return null
+})
 
 // ── Undo History System ────────────────────────────────────────────────
 const undoHistory = useUndoHistory(vfNodes as any, vfEdges as any, props.spaceId, loadGraph)
@@ -70,14 +81,8 @@ const baseApplier = useMutationApplier(vfNodes as any, vfEdges as any, props.spa
 function applyMutations(mutations: import('@/types/graph').GraphMutationAction[]) {
   undoHistory.recordTurn(mutations)
   const result = baseApplier.applyMutations(mutations)
-
-  const hasStructuralChanges = mutations.some(
-    m => m.action === 'add_node' || m.action === 'add_edge'
-  )
-  if (hasStructuralChanges) {
-    setTimeout(() => applyAutoLayout(), 120)
-  }
-
+  // Auto-layout removed: AI adds nodes at calculated positions without disrupting
+  // manually positioned nodes. User can press "Структурировать граф" explicitly.
   return result
 }
 
@@ -148,17 +153,12 @@ async function deleteSelectedBundle() {
   
   if (chosenNodes.length === 0) return
 
-  // Register state for Undo!
-  const mutations: import('@/types/graph').GraphMutationAction[] = []
-  
-  chosenNodes.forEach(rn => {
-    mutations.push({
-      action: 'delete_node',
-      payload: { id: rn.id }
-    })
-  });
-  
-  (undoHistory as any).recordTurn(mutations)
+  // Record snapshot BEFORE deletion (includes nodes + all edges)
+  const mutations: import('@/types/graph').GraphMutationAction[] = chosenNodes.map(rn => ({
+    action: 'delete_node' as const,
+    payload: { id: rn.id }
+  }))
+  undoHistory.recordTurn(mutations)
 
   // Physically remove from database/view
   for (const n of chosenNodes) {
@@ -169,7 +169,7 @@ async function deleteSelectedBundle() {
     }
   }
 
-  handleNotify({ type: 'success', message: `Deleted ${chosenNodes.length} nodes successfully.` })
+  handleNotify({ type: 'success', message: `Удалено ${chosenNodes.length} нод.` })
 }
 
 // Global Backspace & Delete keyboard listeners
@@ -233,13 +233,13 @@ async function handleTemplateSelected(templateKey: string | null) {
 async function handleDeleteNode(nodeId: string) {
   const node = (vfNodes.value as any[]).find((n: any) => n.id === nodeId)
   if (!node) return
-  
-  // Register full turn in global Undo History system
+
+  // Record snapshot BEFORE deletion (new snapshot-based undo)
   undoHistory.recordTurn([{
     action: 'delete_node',
     payload: { id: nodeId }
   }])
-  
+
   try {
     await deleteNode(nodeId, false) // Hard delete for clean canvas!
   } catch (err) {
@@ -321,7 +321,13 @@ function onNodeDragStop({ node }: NodeDragEvent) {
 
 function onNodeClick({ node }: NodeMouseEvent) {
   if (node.type === 'ghostNode') return
-  // Open editor on click
+  if (canvasMode.value === 'select') {
+    // In select mode: toggle selection for AI decompose, don't open editor
+    selectNode(node.id === activeNode.value?.id ? null : node.id)
+    return
+  }
+  // In drag mode: open editor + track selected node for AI decompose
+  selectNode(node.id)
   editingNodeId.value = node.id
   showEditModal.value = true
 }
@@ -515,10 +521,10 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
 
       <div class="flex items-center gap-2">
         <!-- Selected node chip -->
-        <span v-if="selectedNode"
+        <span v-if="activeNode"
               class="hidden sm:inline-block max-w-[160px] truncate text-xs text-olive-500
                      bg-olive-100 rounded-full px-2.5 py-1 font-medium">
-          ✓ {{ selectedNode.title }}
+          ✓ {{ activeNode.title }}
         </span>
 
         <!-- ── Model selector dropdown ───────────────────────── -->
@@ -601,9 +607,9 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
         <!-- AI Decompose button (needs selected node) -->
         <button
           class="btn-olive-outline"
-          :disabled="!selectedNode || isDecomposing"
-          :title="selectedNode ? `Decompose '${selectedNode.title}'` : 'Select a node first'"
-          @click="selectedNode && triggerDecompose(selectedNode.id)"
+          :disabled="!activeNode || isDecomposing"
+          :title="activeNode ? `Decompose '${activeNode.title}'` : 'Select a node first'"
+          @click="activeNode && triggerDecompose(activeNode.id)"
         >
           <svg v-if="!isDecomposing" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
                fill="currentColor" class="w-4 h-4">
@@ -656,11 +662,11 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
         :max-zoom="4"
         fit-view-on-init
         elevate-nodes-on-select
-        :multi-selection-key="null"
+        :multi-selection-key-code="canvasMode === 'select' ? null : 'Shift'"
+        :selection-key-code="canvasMode === 'select' ? null : 'Shift'"
+        :select-nodes-on-drag="canvasMode === 'select'"
         :delete-key-code="null"
-        :pane-carousal-speed="0"
-        :pan-on-drag="canvasMode === 'drag'"
-        :selection-on-drag="canvasMode === 'select'"
+        :pan-on-drag="canvasMode === 'drag' ? true : [2]"
         class="w-full h-full"
         @node-drag-stop="onNodeDragStop"
         @node-click="onNodeClick"
@@ -716,26 +722,35 @@ provide<SmartEdgeActions>('smartEdgeActions', { insertNodeBetween })
         </div>
       </Transition>
 
-// Floating Fixed Undo/Redo arrows panel top-left below title
-      <div class="absolute top-20 left-6 z-35 bg-zinc-900/90 border border-zinc-700 rounded-xl p-1 flex items-center shadow-lg backdrop-blur">
+      <!-- Undo/Redo + Layout panel -->
+      <div class="absolute top-20 left-6 z-30 bg-zinc-900/90 border border-zinc-700 rounded-xl p-1 flex items-center shadow-lg backdrop-blur gap-0.5">
         <button
           type="button"
           class="p-2 rounded-lg text-sm transition-all text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
           :disabled="!undoHistory.canUndo()"
-          title="Undo Last Action"
+          title="Отменить последнее действие"
           @click="handleSystemUndo"
         >
           <span class="font-bold">↩</span>
         </button>
-        <div class="h-4 w-px bg-zinc-700 mx-0.5"></div>
+        <div class="h-4 w-px bg-zinc-700"></div>
         <button
           type="button"
           class="p-2 rounded-lg text-sm transition-all text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
           :disabled="!undoHistory.canRedo()"
-          title="Redo Undone Action"
+          title="Вернуть отменённое действие"
           @click="handleSystemRedo"
         >
           <span class="font-bold">↪</span>
+        </button>
+        <div class="h-4 w-px bg-zinc-700"></div>
+        <button
+          type="button"
+          class="px-2 py-1.5 rounded-lg text-xs font-semibold transition-all text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+          title="Структурировать граф (авто-раскладка)"
+          @click="applyAutoLayout"
+        >
+          ⬛ Структурировать
         </button>
       </div>
     </div>
